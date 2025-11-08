@@ -72,7 +72,11 @@ class YouTubeTranscriptService:
             
             # Provide more helpful error messages
             error_str = str(e).lower()
-            if "transcript" in error_str and ("disabled" in error_str or "not available" in error_str):
+            
+            # Check for YouTube IP blocking FIRST (before other checks)
+            if "youtube is blocking" in error_str or "ip has been blocked" in error_str or "cloud provider" in error_str:
+                error_msg = f"YouTube is blocking requests from this server IP. This is common with cloud providers. Consider using proxies or running from a different location."
+            elif "transcript" in error_str and ("disabled" in error_str or "not available" in error_str):
                 error_msg = f"Transcripts are disabled or not available for video: {video_id}"
             elif "video" in error_str and ("unavailable" in error_str or "private" in error_str or "deleted" in error_str):
                 error_msg = f"Video is unavailable: {video_id}. The video may be private, deleted, or restricted."
@@ -80,7 +84,7 @@ class YouTubeTranscriptService:
                 error_msg = f"No transcript found for video: {video_id} in languages: {languages}. The video may not have captions enabled."
             elif "network" in error_str or "connection" in error_str or "timeout" in error_str:
                 error_msg = f"Network error while fetching transcript: {str(e)}"
-            elif "could not import" in error_str or "youtube_transcript_api" in error_str:
+            elif "could not import" in error_str and "youtube_transcript_api" in error_str:
                 error_msg = f"Missing dependency: youtube-transcript-api. Please install it with: pip install youtube-transcript-api"
             
             return False, None, error_msg
