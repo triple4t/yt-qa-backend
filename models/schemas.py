@@ -6,6 +6,8 @@ class QARequest(BaseModel):
     video_id: str = Field(..., description="YouTube video ID")
     transcript: str = Field(..., description="Full video transcript text")
     question: str = Field(..., min_length=1, description="User's question about the video")
+    session_id: Optional[str] = Field(None, description="Optional session ID for conversation memory")
+    clear_history: Optional[bool] = Field(False, description="Clear conversation history for this session")
     
     class Config:
         json_schema_extra = {
