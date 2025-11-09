@@ -270,13 +270,15 @@ async def ask_question(request: QARequest):
     """
     Manual Q&A endpoint - Requires transcript to be provided
     
-    Use this if you already have the transcript.
+    Use this if you already have the transcript (e.g., fetched client-side).
     For automatic transcript fetching, use /api/qa/auto instead.
     
     Request Body:
     - video_id: YouTube video ID
     - transcript: Full video transcript text
     - question: User's question about the video
+    - session_id: Optional session ID for conversation memory
+    - clear_history: Optional flag to clear conversation history (default: False)
     
     Returns:
     - success: Whether the request was successful
@@ -284,6 +286,8 @@ async def ask_question(request: QARequest):
     - error: Error message (if failed)
     - video_id: Echo of the video ID
     - transcript_fetched: False (since transcript was provided)
+    - session_id: Session ID used for this conversation
+    - conversation_length: Number of Q&A exchanges in this conversation
     """
     try:
         # Validate Azure OpenAI is configured
@@ -307,10 +311,20 @@ async def ask_question(request: QARequest):
                 detail="Question cannot be empty"
             )
         
-        # Log the request (without sensitive data)
         logger.info(f"Processing Q&A request for video: {request.video_id}")
         logger.debug(f"Question: {request.question[:100]}...")
         logger.debug(f"Transcript length: {len(request.transcript)} characters")
+        
+        # Handle conversation memory
+        if request.clear_history:
+            conversation_memory.clear_history(request.video_id, request.session_id)
+            logger.info(f"Cleared conversation history for video: {request.video_id}, session: {request.session_id}")
+        
+        # Get conversation history
+        history = conversation_memory.get_history(request.video_id, request.session_id)
+        formatted_history = conversation_memory.format_history_for_prompt(history) if history else None
+        
+        logger.info(f"Conversation history: {len(history)} previous exchanges")
         
         # Get Azure OpenAI service
         try:
@@ -322,20 +336,34 @@ async def ask_question(request: QARequest):
                 detail=f"Azure OpenAI service unavailable: {str(e)}"
             )
         
-        # Call Azure OpenAI service
+        # Call Azure OpenAI service with conversation history
         success, answer, error = await azure_service.ask_question(
             transcript=request.transcript,
-            question=request.question
+            question=request.question,
+            conversation_history=formatted_history
         )
         
         if success:
+            # Store the exchange in conversation memory
+            conversation_memory.add_exchange(
+                video_id=request.video_id,
+                question=request.question,
+                answer=answer,
+                session_id=request.session_id
+            )
+            
+            # Get updated conversation length
+            updated_history = conversation_memory.get_history(request.video_id, request.session_id)
+            
             logger.info(f"Successfully generated answer for video: {request.video_id}")
             return QAResponse(
                 success=True,
                 answer=answer,
                 error=None,
                 video_id=request.video_id,
-                transcript_fetched=False
+                transcript_fetched=False,
+                session_id=request.session_id,
+                conversation_length=len(updated_history)
             )
         else:
             logger.error(f"Azure OpenAI error for video {request.video_id}: {error}")
