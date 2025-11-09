@@ -2,7 +2,7 @@ import httpx
 from typing import Optional
 import logging
 import asyncio
-from backend.config import settings
+from config import settings  # Fixed import
 import re
 import html
 
@@ -25,53 +25,73 @@ class YouTubeTranscriptService:
             logger.info(f"Fetching transcript for video: {video_id}")
             
             # Use YouTube's transcript API endpoint directly
-            # This is the same endpoint that youtube-transcript-api uses
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                # Try each language
+                # Try different formats
+                formats = ["srv3", "srv1", "srv2", "vtt", "ttml"]
                 transcript_text = None
                 last_error = None
                 
-                for lang in languages:
-                    try:
-                        # YouTube transcript API endpoint
-                        url = f"https://www.youtube.com/api/timedtext"
-                        params = {
-                            "v": video_id,
-                            "lang": lang,
-                            "fmt": "srv3"  # or "srv1", "srv2", "ttml", "vtt"
-                        }
-                        
-                        response = await client.get(url, params=params)
-                        
-                        if response.status_code == 200:
-                            # Parse XML/SRV format
-                            transcript_text = YouTubeTranscriptService._parse_transcript_xml(response.text)
-                            if transcript_text and transcript_text.strip():
-                                logger.info(f"Found transcript in language: {lang}")
-                                break
-                    except Exception as e:
-                        last_error = str(e)
-                        logger.debug(f"Failed to fetch transcript in {lang}: {last_error}")
-                        continue
+                for fmt in formats:
+                    for lang in languages:
+                        try:
+                            url = f"https://www.youtube.com/api/timedtext"
+                            params = {
+                                "v": video_id,
+                                "lang": lang,
+                                "fmt": fmt
+                            }
+                            
+                            response = await client.get(url, params=params)
+                            
+                            if response.status_code == 200 and response.text:
+                                # Log first 200 chars of response for debugging
+                                logger.debug(f"Response preview ({fmt}, {lang}): {response.text[:200]}")
+                                
+                                # Parse based on format
+                                if fmt in ["srv3", "srv1", "srv2"]:
+                                    transcript_text = YouTubeTranscriptService._parse_transcript_xml(response.text)
+                                elif fmt == "vtt":
+                                    transcript_text = YouTubeTranscriptService._parse_vtt(response.text)
+                                elif fmt == "ttml":
+                                    transcript_text = YouTubeTranscriptService._parse_ttml(response.text)
+                                
+                                if transcript_text and transcript_text.strip():
+                                    logger.info(f"Found transcript in language: {lang}, format: {fmt}")
+                                    return True, transcript_text, None
+                        except Exception as e:
+                            last_error = str(e)
+                            logger.debug(f"Failed to fetch transcript ({fmt}, {lang}): {last_error}")
+                            continue
                 
                 # If no preferred language worked, try without language parameter (auto-detect)
                 if not transcript_text:
-                    try:
-                        url = f"https://www.youtube.com/api/timedtext"
-                        params = {
-                            "v": video_id,
-                            "fmt": "srv3"
-                        }
-                        response = await client.get(url, params=params)
-                        if response.status_code == 200:
-                            transcript_text = YouTubeTranscriptService._parse_transcript_xml(response.text)
-                            if transcript_text and transcript_text.strip():
-                                logger.info("Found transcript (auto-detected language)")
-                    except Exception as e:
-                        last_error = str(e)
+                    for fmt in formats:
+                        try:
+                            url = f"https://www.youtube.com/api/timedtext"
+                            params = {
+                                "v": video_id,
+                                "fmt": fmt
+                            }
+                            response = await client.get(url, params=params)
+                            if response.status_code == 200 and response.text:
+                                logger.debug(f"Response preview ({fmt}, auto): {response.text[:200]}")
+                                
+                                if fmt in ["srv3", "srv1", "srv2"]:
+                                    transcript_text = YouTubeTranscriptService._parse_transcript_xml(response.text)
+                                elif fmt == "vtt":
+                                    transcript_text = YouTubeTranscriptService._parse_vtt(response.text)
+                                elif fmt == "ttml":
+                                    transcript_text = YouTubeTranscriptService._parse_ttml(response.text)
+                                
+                                if transcript_text and transcript_text.strip():
+                                    logger.info(f"Found transcript (auto-detected language), format: {fmt}")
+                                    return True, transcript_text, None
+                        except Exception as e:
+                            last_error = str(e)
+                            continue
                 
                 if not transcript_text or not transcript_text.strip():
-                    return False, None, f"No captions available for this video. {last_error if last_error else ''}"
+                    return False, None, f"No captions available for this video. {last_error if last_error else 'Response was empty or could not be parsed.'}"
                 
                 logger.info(f"Successfully fetched transcript ({len(transcript_text)} characters)")
                 return True, transcript_text, None
@@ -86,12 +106,53 @@ class YouTubeTranscriptService:
     @staticmethod
     def _parse_transcript_xml(xml_content: str) -> str:
         """Parse YouTube transcript XML format and extract text"""
-        # Remove XML tags and extract text
-        # YouTube transcript XML format: <text start="..." dur="...">text content</text>
-        text_pattern = r'<text[^>]*>(.*?)</text>'
-        matches = re.findall(text_pattern, xml_content, re.DOTALL)
+        # Try multiple patterns for different XML structures
+        text_lines = []
         
-        # Clean up HTML entities and join
+        # Pattern 1: <text start="..." dur="...">text content</text>
+        pattern1 = r'<text[^>]*>(.*?)</text>'
+        matches1 = re.findall(pattern1, xml_content, re.DOTALL)
+        if matches1:
+            text_lines.extend([html.unescape(match.strip()) for match in matches1 if match.strip()])
+        
+        # Pattern 2: <p t="..." d="...">text content</p>
+        pattern2 = r'<p[^>]*>(.*?)</p>'
+        matches2 = re.findall(pattern2, xml_content, re.DOTALL)
+        if matches2:
+            text_lines.extend([html.unescape(match.strip()) for match in matches2 if match.strip()])
+        
+        # Pattern 3: Just extract all text between tags
+        if not text_lines:
+            # Remove all XML tags and get remaining text
+            text = re.sub(r'<[^>]+>', ' ', xml_content)
+            text = html.unescape(text)
+            text_lines = [line.strip() for line in text.split() if line.strip()]
+        
+        return ' '.join(text_lines)
+    
+    @staticmethod
+    def _parse_vtt(vtt_content: str) -> str:
+        """Parse WebVTT format"""
+        lines = vtt_content.split('\n')
+        text_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            # Skip VTT headers, timestamps, and empty lines
+            if not line or line.startswith('WEBVTT') or '-->' in line or line.isdigit():
+                continue
+            # Skip style/note blocks
+            if line.startswith('NOTE') or line.startswith('STYLE'):
+                continue
+            text_lines.append(line)
+        
+        return ' '.join(text_lines)
+    
+    @staticmethod
+    def _parse_ttml(ttml_content: str) -> str:
+        """Parse TTML format"""
+        # Extract text from <p> tags in TTML
+        pattern = r'<p[^>]*>(.*?)</p>'
+        matches = re.findall(pattern, ttml_content, re.DOTALL)
         text_lines = [html.unescape(match.strip()) for match in matches if match.strip()]
-        
         return ' '.join(text_lines)
