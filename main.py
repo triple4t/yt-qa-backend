@@ -1,11 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from config import settings
 from models.schemas import QARequest, AutoQARequest, QAResponse, HealthResponse
 from services.azure_openai import get_azure_service
 from services.youtube_transcript import YouTubeTranscriptService
 from services.conversation_memory import conversation_memory
 from typing import Optional
+from pathlib import Path
 import logging
 
 # Configure logging
@@ -80,6 +82,17 @@ async def health_check():
         azure_configured=is_configured,
         missing_settings=missing
     )
+
+@app.get("/privacy-policy")
+async def privacy_policy():
+    """Privacy policy page for Chrome Web Store"""
+    backend_dir = Path(__file__).parent
+    privacy_policy_path = backend_dir / "privacy-policy.html"
+    
+    if not privacy_policy_path.exists():
+        raise HTTPException(status_code=404, detail="Privacy policy not found")
+    
+    return FileResponse(privacy_policy_path, media_type="text/html")
 
 @app.get("/api/conversation/history")
 async def get_conversation_history(video_id: str, session_id: Optional[str] = None):

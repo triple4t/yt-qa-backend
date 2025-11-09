@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - YouTube Q&A Assistant</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #1a73e8;
+            border-bottom: 2px solid #1a73e8;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+        }
+        .last-updated {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 30px;
+        }
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        li {
+            margin: 5px 0;
+        }
+        .contact {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Privacy Policy for YouTube Q&A Assistant</h1>
+    <p class="last-updated"><strong>Last Updated:</strong> November 9, 2025</p>
+
+    <h2>Introduction</h2>
+    <p>YouTube Q&A Assistant ("we", "our", or "the extension") is a Chrome browser extension that provides AI-powered question and answer functionality for YouTube videos. This privacy policy explains how we handle your data.</p>
+
+    <h2>Data Collection</h2>
+    <p>The extension collects and processes the following data:</p>
+    <ul>
+        <li><strong>Video Transcripts:</strong> Extracted client-side from YouTube videos you visit</li>
+        <li><strong>Questions:</strong> Questions you ask about videos</li>
+        <li><strong>Video IDs:</strong> YouTube video IDs for conversation context</li>
+        <li><strong>Backend API URL:</strong> Your configured backend API URL (stored locally)</li>
+    </ul>
+
+    <h2>How Data is Used</h2>
+    <ul>
+        <li>Video transcripts are extracted in your browser (client-side) from YouTube</li>
+        <li>Transcripts and questions are sent to your configured backend API server</li>
+        <li>The backend processes data using Azure OpenAI to generate answers</li>
+        <li>Conversation history is stored on your configured backend server for context</li>
+        <li>No data is stored locally by the extension itself</li>
+    </ul>
+
+    <h2>Data Storage</h2>
+    <ul>
+        <li><strong>Local Storage:</strong> Only your configured backend API URL is stored locally using Chrome's storage API</li>
+        <li><strong>Backend Server:</strong> Conversation history and transcripts are stored on your configured backend server</li>
+        <li><strong>No Third-Party Storage:</strong> We do not store your data on any third-party servers</li>
+    </ul>
+
+    <h2>Third-Party Services</h2>
+    <ul>
+        <li><strong>YouTube:</strong> For video transcript extraction (client-side)</li>
+        <li><strong>Backend API:</strong> Your configured backend server (default: Azure VM)</li>
+        <li><strong>Azure OpenAI:</strong> Used by backend for AI processing (if using default backend)</li>
+    </ul>
+
+    <h2>User Control</h2>
+    <ul>
+        <li>You can configure your own backend URL in extension settings</li>
+        <li>You can clear conversation history at any time</li>
+        <li>Extension only works on YouTube video pages you actively visit</li>
+        <li>You can uninstall the extension at any time</li>
+    </ul>
+
+    <h2>Data Security</h2>
+    <ul>
+        <li>Transcripts are extracted client-side in your browser</li>
+        <li>All API communications use HTTPS encryption</li>
+        <li>You control which backend server receives your data</li>
+    </ul>
+
+    <h2>Children's Privacy</h2>
+    <p>This extension is not intended for users under 13 years of age. We do not knowingly collect data from children.</p>
+
+    <h2>Changes to Privacy Policy</h2>
+    <p>We may update this privacy policy. Changes will be posted on this page with an updated "Last Updated" date.</p>
+
+    <h2>Compliance</h2>
+    <p>This extension complies with:</p>
+    <ul>
+        <li>Chrome Web Store Developer Program Policies</li>
+        <li>General Data Protection Regulation (GDPR) principles</li>
+        <li>California Consumer Privacy Act (CCPA) principles</li>
+    </ul>
+
+    <div class="contact">
+        <h2>Contact</h2>
+        <p>For questions about this privacy policy, please contact us through the extension's support channel or GitHub repository.</p>
+    </div>
+</body>
+</html>
+
