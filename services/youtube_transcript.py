@@ -14,8 +14,7 @@ class YouTubeTranscriptService:
     async def get_transcript(video_id: str, languages: list[str] = None) -> tuple[bool, Optional[str], Optional[str]]:
         """
         Fetch transcript using YouTube's transcript API endpoint
-        This is the same endpoint that youtube-transcript-api uses, but we call it directly
-        to avoid IP blocking issues with the library
+        Try just one format/language first to avoid rate limiting
         """
         if languages is None:
             languages = ['en', 'en-US', 'en-GB']
@@ -23,103 +22,57 @@ class YouTubeTranscriptService:
         try:
             logger.info(f"Fetching transcript for video: {video_id}")
             
-            # Use YouTube's transcript API endpoint directly
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                # Try different formats with delays to avoid rate limiting
-                formats = ["srv3", "srv1", "vtt"]  # Reduced formats
-                transcript_text = None
-                last_error = None
+                # Try just ONE format first (srv3 is most common)
+                url = f"https://www.youtube.com/api/timedtext"
                 
-                for fmt in formats:
-                    for lang in languages:
-                        try:
-                            # Add delay to avoid rate limiting (except first request)
-                            if fmt != formats[0] or lang != languages[0]:
-                                await asyncio.sleep(0.5)  # 500ms delay between requests
+                # Try languages in order, one at a time
+                for lang in languages:
+                    try:
+                        params = {
+                            "v": video_id,
+                            "lang": lang,
+                            "fmt": "srv3"
+                        }
+                        
+                        response = await client.get(url, params=params)
+                        
+                        # If rate limited, stop immediately
+                        if response.status_code == 429:
+                            logger.warning(f"Rate limited by YouTube. Azure IP is blocked.")
+                            return False, None, "YouTube is rate limiting requests from this server. This is common with cloud provider IPs. Please wait a few minutes or use a different server."
+                        
+                        logger.info(f"Response status ({lang}): {response.status_code}, length: {len(response.text) if response.text else 0}")
+                        
+                        if response.status_code == 200 and response.text and len(response.text.strip()) > 0:
+                            logger.info(f"Response preview: {response.text[:300]}")
                             
-                            url = f"https://www.youtube.com/api/timedtext"
-                            params = {
-                                "v": video_id,
-                                "lang": lang,
-                                "fmt": fmt
-                            }
+                            transcript_text = YouTubeTranscriptService._parse_transcript_xml(response.text)
                             
-                            response = await client.get(url, params=params)
-                            
-                            # Handle rate limiting
-                            if response.status_code == 429:
-                                logger.warning(f"Rate limited ({fmt}, {lang}), waiting 2 seconds...")
-                                await asyncio.sleep(2)  # Wait longer if rate limited
-                                continue
-                            
-                            logger.info(f"Response status ({fmt}, {lang}): {response.status_code}, content-type: {response.headers.get('content-type', 'unknown')}, text length: {len(response.text) if response.text else 0}")
-                            
-                            if response.status_code == 200 and response.text and len(response.text.strip()) > 0:
-                                # Log response details at INFO level
-                                logger.info(f"Response preview ({fmt}, {lang}): {response.text[:500]}")
-                                
-                                # Parse based on format
-                                if fmt in ["srv3", "srv1", "srv2"]:
-                                    transcript_text = YouTubeTranscriptService._parse_transcript_xml(response.text)
-                                elif fmt == "vtt":
-                                    transcript_text = YouTubeTranscriptService._parse_vtt(response.text)
-                                elif fmt == "ttml":
-                                    transcript_text = YouTubeTranscriptService._parse_ttml(response.text)
-                                
-                                logger.info(f"Parsed text length: {len(transcript_text) if transcript_text else 0}, preview: {transcript_text[:200] if transcript_text else 'None'}")
-                                
-                                if transcript_text and transcript_text.strip():
-                                    logger.info(f"Found transcript in language: {lang}, format: {fmt}")
-                                    return True, transcript_text, None
-                            else:
-                                logger.warning(f"Empty or invalid response ({fmt}, {lang}): status={response.status_code}, text_length={len(response.text) if response.text else 0}")
-                        except Exception as e:
-                            last_error = str(e)
-                            logger.debug(f"Failed to fetch transcript ({fmt}, {lang}): {last_error}")
-                            continue
+                            if transcript_text and transcript_text.strip():
+                                logger.info(f"Found transcript in language: {lang}")
+                                return True, transcript_text, None
+                    except Exception as e:
+                        logger.debug(f"Failed ({lang}): {str(e)}")
+                        continue
                 
-                # If no preferred language worked, try without language parameter (auto-detect) with delay
-                if not transcript_text:
-                    await asyncio.sleep(1)  # Wait before trying auto-detect
-                    for fmt in ["srv3", "srv1"]:  # Only try 2 formats for auto-detect
-                        try:
-                            await asyncio.sleep(0.5)  # Delay between auto-detect attempts
-                            
-                            url = f"https://www.youtube.com/api/timedtext"
-                            params = {
-                                "v": video_id,
-                                "fmt": fmt
-                            }
-                            response = await client.get(url, params=params)
-                            
-                            if response.status_code == 429:
-                                logger.warning(f"Rate limited ({fmt}, auto), stopping...")
-                                break  # Stop if rate limited
-                            
-                            if response.status_code == 200 and response.text and len(response.text.strip()) > 0:
-                                logger.info(f"Response preview ({fmt}, auto): {response.text[:500]}")
-                                
-                                if fmt in ["srv3", "srv1", "srv2"]:
-                                    transcript_text = YouTubeTranscriptService._parse_transcript_xml(response.text)
-                                elif fmt == "vtt":
-                                    transcript_text = YouTubeTranscriptService._parse_vtt(response.text)
-                                elif fmt == "ttml":
-                                    transcript_text = YouTubeTranscriptService._parse_ttml(response.text)
-                                
-                                if transcript_text and transcript_text.strip():
-                                    logger.info(f"Found transcript (auto-detected language), format: {fmt}")
-                                    return True, transcript_text, None
-                        except Exception as e:
-                            last_error = str(e)
-                            continue
+                # If no language worked, try without language (auto-detect) - ONE attempt only
+                try:
+                    params = {"v": video_id, "fmt": "srv3"}
+                    response = await client.get(url, params=params)
+                    
+                    if response.status_code == 429:
+                        return False, None, "YouTube is rate limiting requests from this server. This is common with cloud provider IPs."
+                    
+                    if response.status_code == 200 and response.text:
+                        transcript_text = YouTubeTranscriptService._parse_transcript_xml(response.text)
+                        if transcript_text and transcript_text.strip():
+                            logger.info("Found transcript (auto-detected)")
+                            return True, transcript_text, None
+                except Exception as e:
+                    logger.debug(f"Auto-detect failed: {str(e)}")
                 
-                if not transcript_text or not transcript_text.strip():
-                    if "429" in str(last_error) or "rate limit" in str(last_error).lower():
-                        return False, None, "YouTube is rate limiting requests. Please wait a few minutes and try again."
-                    return False, None, f"No captions available for this video. {last_error if last_error else 'Response was empty or could not be parsed.'}"
-                
-                logger.info(f"Successfully fetched transcript ({len(transcript_text)} characters)")
-                return True, transcript_text, None
+                return False, None, "No captions available for this video or YouTube is blocking requests."
                 
         except httpx.TimeoutException:
             return False, None, "Request timeout while fetching transcript"
