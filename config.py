@@ -27,6 +27,8 @@ class Settings:
     API_TITLE: str = "YouTube Q&A API"
     API_VERSION: str = "1.0.0"
     
+    YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
+    
     @property
     def azure_openai_url(self) -> str:
         """Construct the full Azure OpenAI API URL"""
