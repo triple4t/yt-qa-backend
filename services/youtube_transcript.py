@@ -7,7 +7,6 @@ import re
 import html
 
 logger = logging.getLogger(__name__)
-
 class YouTubeTranscriptService:
     """Service for fetching YouTube video transcripts using YouTube transcript API"""
     
@@ -43,9 +42,11 @@ class YouTubeTranscriptService:
                             
                             response = await client.get(url, params=params)
                             
-                            if response.status_code == 200 and response.text:
-                                # Log first 200 chars of response for debugging
-                                logger.debug(f"Response preview ({fmt}, {lang}): {response.text[:200]}")
+                            logger.info(f"Response status ({fmt}, {lang}): {response.status_code}, content-type: {response.headers.get('content-type', 'unknown')}, text length: {len(response.text) if response.text else 0}")
+                            
+                            if response.status_code == 200 and response.text and len(response.text.strip()) > 0:
+                                # Log response details at INFO level
+                                logger.info(f"Response preview ({fmt}, {lang}): {response.text[:500]}")
                                 
                                 # Parse based on format
                                 if fmt in ["srv3", "srv1", "srv2"]:
@@ -55,9 +56,13 @@ class YouTubeTranscriptService:
                                 elif fmt == "ttml":
                                     transcript_text = YouTubeTranscriptService._parse_ttml(response.text)
                                 
+                                logger.info(f"Parsed text length: {len(transcript_text) if transcript_text else 0}, preview: {transcript_text[:200] if transcript_text else 'None'}")
+                                
                                 if transcript_text and transcript_text.strip():
                                     logger.info(f"Found transcript in language: {lang}, format: {fmt}")
                                     return True, transcript_text, None
+                            else:
+                                logger.warning(f"Empty or invalid response ({fmt}, {lang}): status={response.status_code}, text_length={len(response.text) if response.text else 0}")
                         except Exception as e:
                             last_error = str(e)
                             logger.debug(f"Failed to fetch transcript ({fmt}, {lang}): {last_error}")
